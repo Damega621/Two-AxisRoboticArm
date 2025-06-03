@@ -40,6 +40,7 @@
 #define MAX_DECELERATION_TIME 1000 // 1 second
 #define BRAKING_COEFFICIENT 3.0    // Increase if too sluw deceleration, decrease if too abrupt
 
+
 GCodeParser GCode;
 
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -50,7 +51,13 @@ struct RobotState {
   float theta2_deg = 0;
   bool absolute_mode = 0;
   bool units_in_inches = 0;
-} current_state;
+} Arm;
+
+struct ProgramState {
+  RobotState Arm;
+  char current_file_path[64] = "";
+  int last_file_offset = 0;
+} execution_state;
 
 void IRAM_ATTR onEmergencyStop() {
   portENTER_CRITICAL_ISR(&timerMux);
@@ -58,8 +65,25 @@ void IRAM_ATTR onEmergencyStop() {
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
-void saveState() { EEPROM.put(0, current_state); }
-void loadState() { EEPROM.get(0, current_state); }
+void saveState() { 
+  EEPROM.put(0, execution_state); 
+  EEPROM.commit();
+  Serial.println("[SAVE] State saved to EEPROM");
+  }
+void loadState() { 
+  
+  EEPROM.get(0, execution_state);
+   
+  Serial.println("[LOAD] State loaded from EEPROM");
+  Serial.print("Theta1: ");
+  Serial.println(execution_state.Arm.theta1_deg);
+  Serial.print("Theta2: ");
+  Serial.println(execution_state.Arm.theta2_deg);
+  Serial.print("File Path: ");
+  Serial.println(execution_state.current_file_path);
+  Serial.print("Last Offset: ");
+  Serial.println(execution_state.last_file_offset);
+}
 
 void emergencyStop() {
   Serial.println("[EMG] Motors disabled");
@@ -76,8 +100,8 @@ void stepperPulse(int stepPin, int dirPin, bool direction) {
 
 void stepMotorTo(float theta1_target, float theta2_target) {
   
-  int steps1 = (theta1_target - current_state.theta1_deg) * RATIO_1;
-  int steps2 = (theta2_target - current_state.theta2_deg) * RATIO_2;
+  int steps1 = (theta1_target - execution_state.Arm.theta1_deg) * RATIO_1;
+  int steps2 = (theta2_target - execution_state.Arm.theta1_deg) * RATIO_2;
 
   int dir1 = steps1 > 0;
   int dir2 = steps2 > 0;
@@ -111,22 +135,22 @@ void stepMotorTo(float theta1_target, float theta2_target) {
       delay(5);  // Normal stepping delay
     }
   }
-  current_state.theta1_deg = theta1_target;
-  current_state.theta2_deg = theta2_target;
+  execution_state.Arm.theta1_deg = theta1_target;
+  execution_state.Arm.theta2_deg = theta2_target;
 
 }
 
 void origin() {
   Serial.println("Homing to origin...");
-  current_state.theta1_deg = 0;
-  current_state.theta2_deg = 0;
+  execution_state.Arm.theta1_deg = 0;
+  execution_state.Arm.theta2_deg = 0;
 }
 
 
 
 void Motion(float x, float y, float feedrate) {
   
-    if (!current_state.units_in_inches) {
+    if (!execution_state.Arm.units_in_inches) {
         feedrate /= 25.4; // Convert mm to inches
     } 
         
@@ -140,7 +164,7 @@ void Motion(float x, float y, float feedrate) {
     }
     
     #ifdef ELBOW_TOGGLE
-    float curr_theta = current_state.theta2_deg;
+    float curr_theta = execution_state.Arm.theta2_deg;
     float target1 = curr_theta + acos(D);
     float target2 = curr_theta - acos(D);
     
@@ -166,14 +190,14 @@ void Motion(float x, float y, float feedrate) {
 void LineInterpolation(float x_target, float y_target, float feedrate) {
     float l1 = PRIMARY_LENGTH, l2 = SECONDARY_LENGTH;
     
-    if (!current_state.units_in_inches) {
+    if (!execution_state.Arm.units_in_inches) {
         x_target /= 25.4;
         y_target /= 25.4;
     }
     
     // Recompute current X, Y from current joint angles
-    float theta1_rad = current_state.theta1_deg * PI / 180.0;
-    float theta2_rad = current_state.theta2_deg * PI / 180.0;
+    float theta1_rad = execution_state.Arm.theta1_deg * PI / 180.0;
+    float theta2_rad = execution_state.Arm.theta2_deg * PI / 180.0;
     
     float x0 = l1 * cos(theta1_rad) + l2 * cos(theta1_rad + theta2_rad);
     float y0 = l1 * sin(theta1_rad) + l2 * sin(theta1_rad + theta2_rad);
@@ -196,15 +220,15 @@ void processGCode() {
   if (GCode.HasWord('G')) {
     int code = GCode.GetWordValue('G');
     switch (code) {
-      case 20: current_state.units_in_inches = true; Serial.println("Units: inches"); break;
-      case 21: current_state.units_in_inches = false; Serial.println("Units: mm"); break;
+      case 20: execution_state.Arm.units_in_inches = true; Serial.println("Units: inches"); break;
+      case 21: execution_state.Arm.units_in_inches = false; Serial.println("Units: mm"); break;
 
       case 0:
       case 1:
         LineInterpolation(GCode.GetWordValue('X'), GCode.GetWordValue('Y'), GCode.GetWordValue('F'));
         break;
-      case 90: current_state.absolute_mode = true; break;
-      case 91: current_state.absolute_mode = false; break;
+      case 90: execution_state.Arm.absolute_mode = true; break;
+      case 91: execution_state.Arm.absolute_mode = false; break;
       default: Serial.print("Unknown G-code: G"); Serial.println(code);
     }
   }
@@ -216,7 +240,7 @@ void processGCode() {
   }
 }
 
-void executeFile(const char* path) {
+void executeFile(const char* path, bool resume = false) {
   File file = SPIFFS.open(path);
   if (!file) {
     Serial.print("Failed to open file: ");
@@ -224,8 +248,21 @@ void executeFile(const char* path) {
     return;
   }
 
+  // Track file path
+  strncpy(execution_state.current_file_path, path, sizeof(execution_state.current_file_path));
+  execution_state.last_file_offset = 0;
+  saveState();
+
+  if (resume && execution_state.last_file_offset > 0) {
+    file.seek(execution_state.last_file_offset, SeekSet);
+    Serial.print("Resuming at last stored offset: ");
+    Serial.println(execution_state.last_file_offset);
+  }
+
   while (file.available()) {
     if (emergency_triggered) {
+      execution_state.last_file_offset = file.position();
+      saveState();
       emergencyStop();
       file.close();
       return;
@@ -240,6 +277,9 @@ void executeFile(const char* path) {
 
   file.close();
   Serial.println("Finished drawing from file.");
+  execution_state.last_file_offset = 0;
+  execution_state.current_file_path[0] = '\0';
+  saveState();
 }
 
 void setup() {
@@ -255,6 +295,8 @@ void setup() {
   pinMode(PRESET_2_PIN, INPUT_PULLUP);
   pinMode(PRESET_3_PIN, INPUT_PULLUP);
 
+  EEPROM.begin(sizeof(ProgramState));
+
   attachInterrupt(digitalPinToInterrupt(ESTOP_PIN), onEmergencyStop, FALLING);
 
   if (!SPIFFS.begin(true)) {
@@ -265,7 +307,7 @@ void setup() {
   loadState();
   
   // Validate State
-  if (isnan(current_state.theta1_deg) || isnan(current_state.theta2_deg)) {
+  if (isnan(execution_state.Arm.theta1_deg) || isnan(execution_state.Arm.theta2_deg)) {
     origin(); 
     saveState(); // Only save if origin() used
   }
