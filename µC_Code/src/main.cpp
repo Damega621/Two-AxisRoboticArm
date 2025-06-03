@@ -73,7 +73,12 @@ void saveState() {
 void loadState() { 
   
   EEPROM.get(0, execution_state);
-   
+  if (isnan(execution_state.Arm.theta1_deg) || isnan(execution_state.Arm.theta2_deg)) {
+    Serial.println("[LOAD] Invalid state in EEPROM, resetting to defaults");
+    execution_state.Arm.theta1_deg = 0;
+    execution_state.Arm.theta2_deg = 0;
+  }
+
   Serial.println("[LOAD] State loaded from EEPROM");
   Serial.print("Theta1: ");
   Serial.println(execution_state.Arm.theta1_deg);
