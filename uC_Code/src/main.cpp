@@ -9,6 +9,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <WiFi.h>
+#include <WebServer.h>
+#include "server_handlers.h"
+WebServer server(80);
+// === WiFi Credentials ===
+
+
 
 // === A4988 Driver Pin Definitions ===
 #define STEP_1 14
@@ -346,6 +353,12 @@ void setup() {
   xTaskCreate(poll_power_down, "ShutdownTask", 2048, &shutdown_args, 5, NULL);
 
   GCode = GCodeParser();
+
+    // Setup web routes and start server
+  setupWebRoutes(server);
+  server.begin();
+  Serial.println("Web server started.");
+
   loadState();
   
   // Validate State
