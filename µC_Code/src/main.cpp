@@ -33,8 +33,12 @@
 // === Kinematics Macros ===
 #define ELBOW_TOGGLE
 #define ELBOW_UP 1
-#define LINE_SEGMENTS 50
+
+
+// === Constants ===
+#define LINE_SEGMENTS 50           // Number of segments for line interpolation
 #define MAX_DECELERATION_TIME 1000 // 1 second
+#define BRAKING_COEFFICIENT 3.0    // Increase if too sluw deceleration, decrease if too abrupt
 
 GCodeParser GCode;
 
@@ -79,32 +83,33 @@ void stepMotorTo(float theta1_target, float theta2_target) {
   int dir2 = steps2 > 0;
   steps1 = abs(steps1);
   steps2 = abs(steps2);
+  
 
   int max_steps = max(steps1, steps2);
-  unsigned long stop_start_time = 0;
+  unsigned long start_time = 0;
   const unsigned long decel_time = MAX_DECELERATION_TIME; 
+  // Easing coefficient
+  const float EXP_K = BRAKING_COEFFICIENT;                  
 
-  for (int i = 0; i < max_steps; ++i) {
-    if (!emergency_triggered) {
+ for (int i = 0; i < max_steps; ++i) {
+    
+    if (emergency_triggered) {
+      if (start_time == 0) start_time = millis();  // Mark when decel starts
+      float elapsed = millis() - start_time;
+      float progress = min(1.0f, elapsed / (float)decel_time);
+      float scale = 1.0f - exp(-EXP_K * progress);
+      int dynamic_delay = 5 + (int)(50 * scale);  // 5ms base + scaled slowdown
+
       if (i < steps1) stepperPulse(STEP_1, DIR_1, dir1);
       if (i < steps2) stepperPulse(STEP_2, DIR_2, dir2);
-      delay(5);  // normal step delay
+      delay(dynamic_delay);
+
+      if (elapsed >= decel_time) break;  // Fully stopped
     } else {
-
-      if (stop_start_time == 0) stop_start_time = millis();
-
-      unsigned long elapsed = millis() - stop_start_time;
-      float progress = min(1.0f, elapsed / (float)MAX_DECELERATION_TIME);
-      float scale = 1.0f - progress;  // from 1 → 0
-
-      if (scale <= 0.0f) break; // fully decelerated and stop motion
-
-      int decel_delay = 5 + (int)(50 * (1.0f - scale)); // from 5 → 55 m
-
       if (i < steps1) stepperPulse(STEP_1, DIR_1, dir1);
       if (i < steps2) stepperPulse(STEP_2, DIR_2, dir2);
-      delay(decel_delay);
-   }
+      delay(5);  // Normal stepping delay
+    }
   }
   current_state.theta1_deg = theta1_target;
   current_state.theta2_deg = theta2_target;
