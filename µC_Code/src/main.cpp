@@ -34,6 +34,7 @@
 #define ELBOW_TOGGLE
 #define ELBOW_UP 1
 #define LINE_SEGMENTS 50
+#define MAX_DECELERATION_TIME 1000 // 1 second
 
 GCodeParser GCode;
 
@@ -52,6 +53,9 @@ void IRAM_ATTR onEmergencyStop() {
   emergency_triggered = true;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
+
+void saveState() { EEPROM.put(0, current_state); }
+void loadState() { EEPROM.get(0, current_state); }
 
 void emergencyStop() {
   Serial.println("[EMG] Motors disabled");
@@ -77,15 +81,34 @@ void stepMotorTo(float theta1_target, float theta2_target) {
   steps2 = abs(steps2);
 
   int max_steps = max(steps1, steps2);
-  for (int i = 0; i < max_steps; ++i) {
-    if (emergency_triggered) return;
-    if (i < steps1) stepperPulse(STEP_1, DIR_1, dir1);
-    if (i < steps2) stepperPulse(STEP_2, DIR_2, dir2);
-    delay(5);
-  }
+  unsigned long stop_start_time = 0;
+  const unsigned long decel_time = MAX_DECELERATION_TIME; 
 
+  for (int i = 0; i < max_steps; ++i) {
+    if (!emergency_triggered) {
+      if (i < steps1) stepperPulse(STEP_1, DIR_1, dir1);
+      if (i < steps2) stepperPulse(STEP_2, DIR_2, dir2);
+      delay(5);  // normal step delay
+    } else {
+
+      if (stop_start_time == 0) stop_start_time = millis();
+
+      unsigned long elapsed = millis() - stop_start_time;
+      float progress = min(1.0f, elapsed / (float)MAX_DECELERATION_TIME);
+      float scale = 1.0f - progress;  // from 1 → 0
+
+      if (scale <= 0.0f) break; // fully decelerated and stop motion
+
+      int decel_delay = 5 + (int)(50 * (1.0f - scale)); // from 5 → 55 m
+
+      if (i < steps1) stepperPulse(STEP_1, DIR_1, dir1);
+      if (i < steps2) stepperPulse(STEP_2, DIR_2, dir2);
+      delay(decel_delay);
+   }
+  }
   current_state.theta1_deg = theta1_target;
   current_state.theta2_deg = theta2_target;
+
 }
 
 void origin() {
@@ -94,8 +117,7 @@ void origin() {
   current_state.theta2_deg = 0;
 }
 
-void saveState() { EEPROM.put(0, current_state); }
-void loadState() { EEPROM.get(0, current_state); }
+
 
 void Motion(float x, float y, float feedrate) {
   
