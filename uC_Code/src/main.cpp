@@ -4,18 +4,30 @@
 #include <FS.h>
 #include <SPIFFS.h>
 #include "GCodeParser.h"
+#include "preset.h"
+#include "power-down.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 
 // === A4988 Driver Pin Definitions ===
 #define STEP_1 14
 #define DIR_1 27
 #define STEP_2 26
 #define DIR_2 25
+
+// === Motor Control Pins ===
+#define ENABLE_1 12  // ENABLE pin for Motor 1
+#define ENABLE_2 13  // ENABLE pin for Motor 2
+#define POWER_DOWN_PIN 15  // GPIO pin for shutdown button
+
+// === Emergency Stop Pin ===
 #define ESTOP_PIN 34
 
-// === Presets ===
-#define PRESET_1_PIN 32
-#define PRESET_2_PIN 33
-#define PRESET_3_PIN 35
+// // === Presets ===
+// #define PRESET_1_PIN 32
+// #define PRESET_2_PIN 33
+// #define PRESET_3_PIN 35
 
 #define FILE_PRESET_1 "/preset1.gcode"
 #define FILE_PRESET_2 "/preset2.gcode"
@@ -296,9 +308,9 @@ void setup() {
   pinMode(DIR_2, OUTPUT);
 
   pinMode(ESTOP_PIN, INPUT_PULLUP);
-  pinMode(PRESET_1_PIN, INPUT_PULLUP);
-  pinMode(PRESET_2_PIN, INPUT_PULLUP);
-  pinMode(PRESET_3_PIN, INPUT_PULLUP);
+  // pinMode(PRESET_1_PIN, INPUT_PULLUP);
+  // pinMode(PRESET_2_PIN, INPUT_PULLUP);
+  // pinMode(PRESET_3_PIN, INPUT_PULLUP);
 
   EEPROM.begin(sizeof(ProgramState));
 
@@ -307,6 +319,31 @@ void setup() {
   if (!SPIFFS.begin(true)) {
     Serial.println("SPIFFS Mount Failed");
   }
+
+  preset_select_args_t preset_args = {
+    .preset_pin = GPIO_NUM_19,
+    .current_preset = 0,
+    .num_presets = 3,
+    .debounce_ms = 250,
+  };
+
+  xTaskCreate(poll_preset, "Preset_TASK", 2048, &preset_args, 5, NULL);
+  Serial.println("Preset task started");
+
+    // Initialize shutdown pin and enable motor outputs
+  pinMode(ENABLE_1, OUTPUT);
+  pinMode(ENABLE_2, OUTPUT);
+  digitalWrite(ENABLE_1, HIGH);  // Enable motor drivers
+  digitalWrite(ENABLE_2, HIGH);
+  power_down_init(GPIO_NUM_15);
+
+  power_down_task_args_t shutdown_args = {
+    .shutdown_pin = GPIO_NUM_15,
+    .motor1_pin = GPIO_NUM_12,
+    .motor2_pin = GPIO_NUM_13,
+    .delay_ms = 500
+  };
+  xTaskCreate(poll_power_down, "ShutdownTask", 2048, &shutdown_args, 5, NULL);
 
   GCode = GCodeParser();
   loadState();
@@ -319,9 +356,6 @@ void setup() {
 }
 
 void loop() {
-  if (digitalRead(PRESET_1_PIN) == LOW) executeFile(FILE_PRESET_1);
-  if (digitalRead(PRESET_2_PIN) == LOW) executeFile(FILE_PRESET_2);
-  if (digitalRead(PRESET_3_PIN) == LOW) executeFile(FILE_PRESET_3);
 
   if (emergency_triggered) {
     emergencyStop();
