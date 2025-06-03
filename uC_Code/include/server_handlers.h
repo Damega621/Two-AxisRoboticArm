@@ -7,5 +7,6 @@
 void handleRoot(WebServer &server);
 void handlePresetUpload(WebServer &server);
 void setupWebRoutes(WebServer &server);
+void handleEmergencyStop(WebServer &server);
 
 #endif // SERVER_HANDLERS_H

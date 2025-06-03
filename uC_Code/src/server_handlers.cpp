@@ -24,5 +24,13 @@ void handlePresetUpload(WebServer &server) {
 
 void setupWebRoutes(WebServer &server) {
     server.on("/", HTTP_GET, [&]() { handleRoot(server); });
+    server.on("/emergency_stop", HTTP_POST, [&]() { handleEmergencyStop(server); });
     server.on("/upload_preset", HTTP_POST, []() {}, [&server]() { handlePresetUpload(server); });
+}
+
+
+void handleEmergencyStop(WebServer &server) {
+    extern volatile bool emergency_triggered;
+    emergency_triggered = true;
+    server.send(200, "text/plain", "Emergency Stop Triggered");
 }
