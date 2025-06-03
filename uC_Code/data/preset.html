@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Preset Uploads</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <h2>Upload Custom Presets</h2>
+  <form id="presetForm1">
+    <label>Preset 1 (.gcode):</label>
+    <input type="file" name="file" accept=".gcode" required />
+    <button type="submit">Upload</button>
+  </form>
+  <form id="presetForm2">
+    <label>Preset 2 (.gcode):</label>
+    <input type="file" name="file" accept=".gcode" required />
+    <button type="submit">Upload</button>
+  </form>
+  <form id="presetForm3">
+    <label>Preset 3 (.gcode):</label>
+    <input type="file" name="file" accept=".gcode" required />
+    <button type="submit">Upload</button>
+  </form>
+
+  <p id="status"></p>
+
+  <script>
+    function uploadPreset(formId, targetFile) {
+      const form = document.getElementById(formId);
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        const fileInput = form.querySelector('input[type="file"]');
+        const file = fileInput.files[0];
+        if (!file || !file.name.endsWith(".gcode")) {
+          alert("Only .gcode files allowed.");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", file, targetFile);
+
+        fetch("/upload", {
+          method: "POST",
+          body: formData,
+        })
+          .then((res) => res.text())
+          .then((text) => {
+            document.getElementById("status").innerText = `Uploaded ${targetFile}: ${text}`;
+          })
+          .catch((err) => {
+            document.getElementById("status").innerText = `Failed to upload ${targetFile}`;
+            console.error(err);
+          });
+      });
+    }
+
+    uploadPreset("presetForm1", "preset1.gcode");
+    uploadPreset("presetForm2", "preset2.gcode");
+    uploadPreset("presetForm3", "preset3.gcode");
+  </script>
+</body>
+</html>

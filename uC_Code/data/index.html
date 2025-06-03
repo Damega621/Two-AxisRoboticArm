@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Robotic Arm - G-code Control Panel</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+      padding: 2rem;
+    }
+    .gcode-section {
+      margin-bottom: 1.5rem;
+    }
+    label {
+      margin-right: 0.5rem;
+    }
+    input[type="number"] {
+      width: 5rem;
+      margin-right: 1rem;
+    }
+    button {
+      margin: 0.25rem;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    #log {
+      background-color: #222;
+      color: #0f0;
+      padding: 1rem;
+      height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>G-code Command Panel</h1>
+
+  <div class="gcode-section">
+    <h3>G0 / G1 Motion Commands</h3>
+    <label for="gcode-type">Type:</label>
+    <select id="gcode-type">
+      <option value="G0">G0 (Rapid Move)</option>
+      <option value="G1">G1 (Linear Move)</option>
+    </select>
+    <label>X:</label>
+    <input type="number" id="x-value" step="0.1" value="0">
+    <label>Y:</label>
+    <input type="number" id="y-value" step="0.1" value="0">
+    <label>F (feedrate):</label>
+    <input type="number" id="f-value" step="10" value="1000">
+    <button onclick="sendGXY()">Send</button>
+  </div>
+
+  <div class="gcode-section">
+    <h3>Other Commands</h3>
+    <button onclick="sendGCode('G90')">G90 (Absolute)</button>
+    <button onclick="sendGCode('G91')">G91 (Relative)</button>
+    <button onclick="sendGCode('G20')">G20 (Inches)</button>
+    <button onclick="sendGCode('G21')">G21 (mm)</button>
+    <button onclick="sendGCode('M6')">M6 (Tool Change)</button>
+    <button onclick="sendGCode('M2')">M2 (Program End)</button>
+  </div>
+
+  <h3>Status Log</h3>
+  <div id="log">Ready...</div>
+
+  <script>
+    function sendGXY() {
+      const type = document.getElementById("gcode-type").value;
+      const x = document.getElementById("x-value").value;
+      const y = document.getElementById("y-value").value;
+      const f = document.getElementById("f-value").value;
+      const gcode = `${type} X${x} Y${y} F${f}`;
+      sendGCode(gcode);
+    }
+
+    function sendGCode(command) {
+      fetch("/sendGCode", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: command
+      })
+      .then(res => res.text())
+      .then(data => {
+        document.getElementById("log").innerText += `\n> ${command}\n${data}`;
+      })
+      .catch(err => {
+        document.getElementById("log").innerText += `\nError: ${err}`;
+      });
+    }
+  </script>
+
+</body>
+</html>
