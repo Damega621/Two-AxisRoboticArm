@@ -1,19 +1,16 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <EEPROM.h>
-#include <FS.h>
-#include <SPIFFS.h>
 #include "GCodeParser.h"
-#include "preset.h"
-#include "power-down.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
-#include <WiFi.h>
-#include <WebServer.h>
-#include "server_handlers.h"
+#include "power-down.h"
+#include "preset.h"
+#include "server_handlers.hpp"
+
 WebServer server(80);
 // === WiFi Credentials ===
+const char* ssid = "RobotArm";
+const char* password = "Team22";
 
 
 
@@ -89,6 +86,7 @@ void saveState() {
   EEPROM.commit();
   Serial.println("[SAVE] State saved to EEPROM");
   }
+
 void loadState() { 
   
   EEPROM.get(0, execution_state);
@@ -169,7 +167,6 @@ void origin() {
   execution_state.Arm.theta1_deg = 0;
   execution_state.Arm.theta2_deg = 0;
 }
-
 
 
 void Motion(float x, float y, float feedrate) {
@@ -306,6 +303,20 @@ void executeFile(const char* path, bool resume = false) {
   saveState();
 }
 
+// void apply_preset(uint8_t preset_number) {
+//     // Log output to demonstrate functionality
+//     // This is where we would implement control logic if implementing this code
+//     ESP_LOGI("CONTROL", "Applying preset #%d - [Simulated action]", preset_number);
+// }
+
+void apply_preset(uint8_t preset_number) {
+    const char* paths[] = {"/preset1.gcode", "/preset2.gcode", "/preset3.gcode"};
+    if (preset_number < 3) {
+        ESP_LOGI("CONTROL", "Applying preset #%d", preset_number);
+        executeFile(paths[preset_number], false);
+    }
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -393,4 +404,6 @@ void loop() {
       processGCode();
     }
   }
+
+  server.handleClient();
 }
