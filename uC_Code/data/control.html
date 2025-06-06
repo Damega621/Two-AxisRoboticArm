@@ -1,0 +1,24 @@
+<!-- control.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Arm Control</title>
+</head>
+<body>
+  <h2>Robotic Arm Control</h2>
+  <button onclick="sendCommand('/resume')">Resume Last File</button>
+  <button onclick="sendCommand('/origin')">Return to Origin</button>
+
+  <script>
+    function sendCommand(endpoint) {
+      fetch(endpoint, {
+        method: 'POST'
+      })
+      .then(response => response.text())
+      .then(data => alert(data))
+      .catch(error => alert('Error: ' + error));
+    }
+  </script>
+</body>
+</html>

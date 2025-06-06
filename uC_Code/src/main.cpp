@@ -317,6 +317,15 @@ void apply_preset(uint8_t preset_number) {
     }
 }
 
+void handleResume(WebServer &server) {
+    if (strlen(execution_state.current_file_path) > 0) {
+        executeFile(execution_state.current_file_path, true);
+        server.send(200, "text/plain", "Resuming execution...");
+    } else {
+        server.send(400, "text/plain", "No interrupted file to resume.");
+    }
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -365,6 +374,10 @@ void setup() {
 
   GCode = GCodeParser();
 
+  WiFi.softAP(ssid, password);
+  Serial.print("AP IP address: ");
+  Serial.println(WiFi.softAPIP());
+  
     // Setup web routes and start server
   setupWebRoutes(server);
   server.begin();

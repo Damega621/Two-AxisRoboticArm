@@ -33,3 +33,4 @@ extern void handleEmergencyStop(WebServer &server) {
     emergency_triggered = true;
     server.send(200, "text/plain", "Emergency Stop Triggered");
 }
+
